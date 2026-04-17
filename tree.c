@@ -120,6 +120,10 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 // Forward declaration (implemented in object.c)
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
 
+// Forward declaration with weak linkage so test_tree links without index.o.
+// When linked with the full binary (pes), the real index_load is used.
+int index_load(Index *index) __attribute__((weak));
+
 // Recursive helper: build a tree object from a slice of index entries,
 // all of which share the given path prefix (at the given depth).
 // entries: pointer into the index entries array
