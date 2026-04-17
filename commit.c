@@ -194,8 +194,46 @@ int head_update(const ObjectID *new_commit) {
 //
 // Returns 0 on success, -1 on error.
 int commit_create(const char *message, ObjectID *commit_id_out) {
-    // TODO: Implement commit creation
-    // (See Lab Appendix for logical steps)
-    (void)message; (void)commit_id_out;
-    return -1;
+    // 1. Build a tree from the current staged index
+    ObjectID tree_id;
+    if (tree_from_index(&tree_id) != 0) {
+        fprintf(stderr, "error: nothing staged to commit\n");
+        return -1;
+    }
+
+    // 2. Populate the Commit struct
+    Commit c;
+    memset(&c, 0, sizeof(c));
+    c.tree = tree_id;
+    c.timestamp = (uint64_t)time(NULL);
+    snprintf(c.author, sizeof(c.author), "%s", pes_author());
+    snprintf(c.message, sizeof(c.message), "%s", message);
+
+    // 3. Read current HEAD as parent (may not exist for initial commit)
+    ObjectID parent_id;
+    if (head_read(&parent_id) == 0) {
+        c.has_parent = 1;
+        c.parent = parent_id;
+    } else {
+        c.has_parent = 0;
+    }
+
+    // 4. Serialize and write the commit object
+    void *commit_data;
+    size_t commit_len;
+    if (commit_serialize(&c, &commit_data, &commit_len) != 0) return -1;
+
+    if (object_write(OBJ_COMMIT, commit_data, commit_len, commit_id_out) != 0) {
+        free(commit_data);
+        return -1;
+    }
+    free(commit_data);
+
+    // 5. Update HEAD to point to the new commit
+    if (head_update(commit_id_out) != 0) return -1;
+
+    char hex[HASH_HEX_SIZE + 1];
+    hash_to_hex(commit_id_out, hex);
+    printf("[main %.7s] %s\n", hex, message);
+    return 0;
 }
