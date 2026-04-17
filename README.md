@@ -605,9 +605,81 @@ The following questions cover filesystem concepts beyond the implementation scop
 
 # Lab Report
 
-### Phase 1
-**Screenshot 1A: `./test_objects` output**
+## Phase 1: Object Storage Foundation
+
+### Screenshot 1A — `./test_objects` output
+
+**Description:** This screenshot shows the output of the Phase 1 test suite. The test program verifies three core properties of the object store: (1) **blob storage and retrieval** — a blob is written using `object_write` and read back with `object_read`, confirming the data is identical; (2) **deduplication** — writing the same content twice results in a single stored file because the SHA-256 hash is identical; (3) **integrity checking** — after corrupting the stored file, `object_read` detects the mismatch between the stored hash (filename) and the recomputed hash of the file contents, returning an error. All three tests pass, confirming the content-addressable object store is working correctly.
+
 ![Screenshot 1A](screenshot_1A.jpg)
 
-**Screenshot 1B: `find .pes/objects -type f` — sharded directory structure**
+---
+
+### Screenshot 1B — `find .pes/objects -type f`
+
+**Description:** This screenshot shows the directory sharding structure of the object store. Each object is stored at `.pes/objects/XX/YYYYYY...` where `XX` is the first two hex characters of the SHA-256 hash and `YYYYYY...` is the remaining 62 characters. This two-level directory structure (called sharding) prevents any single directory from containing too many files, which would degrade filesystem performance. Three objects are visible — one per test case created by `test_objects`.
+
 ![Screenshot 1B](screenshot_1B.jpg)
+
+---
+
+## Phase 2: Tree Objects
+
+### Screenshot 2A — `./test_tree` output
+
+**Description:** This screenshot shows the output of the Phase 2 test suite. Two tests are run: (1) **roundtrip test** — a Tree struct with 3 entries (a regular file, an executable, and a subdirectory) is serialized to binary and parsed back, verifying that all modes, names, and hashes are preserved exactly; (2) **determinism test** — the same two entries inserted in different orders both produce byte-identical serialized output because `tree_serialize` sorts entries alphabetically before writing. This mirrors Git's requirement for canonical tree representation, ensuring the same directory contents always produce the same hash regardless of insertion order.
+
+![Screenshot 2A](screenshot_2A.jpg)
+
+---
+
+### Screenshot 2B — `xxd` of a raw tree object
+
+**Description:** This screenshot shows the raw binary format of a tree object as stored on disk. The object format is `"tree <size>\0<binary entries>"`. Each entry in the binary section follows the pattern `"<mode-octal> <name>\0<32-byte-binary-hash>"`. The `xxd` output shows the hexadecimal bytes alongside their ASCII representation, making visible the mode string (e.g. `100644`), the filename, the null byte separator, and the raw 32-byte SHA-256 hash that follows. This is the exact same binary format used by real Git for its tree objects.
+
+![Screenshot 2B](screenshot_2B.jpg)
+
+---
+
+## Phase 3: The Index (Staging Area)
+
+### Screenshot 3A — `pes init` → `pes add` → `pes status`
+
+**Description:** This screenshot demonstrates the complete staging workflow. `./pes init` creates the `.pes/` repository structure (objects/, refs/heads/, HEAD, etc.). `./pes add file1.txt file2.txt` reads each file, computes its blob hash using SHA-256, stores the blob in the object store, and records the file path, hash, mode, size, and modification time in `.pes/index`. `./pes status` then reads the index and working directory to report which files are staged for the next commit, which tracked files have been modified since staging, and which files are untracked entirely.
+
+![Screenshot 3A](screenshot_3A.jpg)
+
+---
+
+### Screenshot 3B — `cat .pes/index`
+
+**Description:** This screenshot shows the human-readable text format of the index file. Each line represents one staged file in the format: `<mode-octal> <sha256-hex> <mtime-seconds> <size-bytes> <path>`. The mode `100644` indicates a regular non-executable file. The 64-character hex string is the SHA-256 hash of the blob (file content). The modification time and size are stored for fast change detection — `pes status` can compare these values against the current file's `stat()` metadata to detect modifications without re-hashing the file. Entries are sorted alphabetically by path, which is enforced by `index_save`.
+
+![Screenshot 3B](screenshot_3B.jpg)
+
+---
+
+## Phase 4: Commits and History
+
+### Screenshot 4A — `./pes log` output
+
+**Description:** This screenshot shows the output of `pes log` after creating three commits. Each commit entry displays its full SHA-256 hash (the unique identifier of that commit object), the author name and SRN read from the `PES_AUTHOR` environment variable, the Unix timestamp of when the commit was made, and the commit message. The commits are displayed in reverse-chronological order (newest first), walking the parent chain: each commit object contains a `parent` field pointing to the previous commit's hash, forming a linked list of history back to the root (which has no parent).
+
+![Screenshot 4A](screenshot_4A.jpg)
+
+---
+
+### Screenshot 4B — `find .pes -type f | sort`
+
+**Description:** This screenshot shows the growth of the `.pes/` directory after three commits. Each commit produces several new objects: one **blob** per new/modified file, one **tree** object representing the directory snapshot, and one **commit** object tying everything together. Because PES-VCS uses content-addressable storage, unchanged files are not re-stored — their existing blob hash is simply re-referenced by the new tree. The `refs/heads/main` file contains the hash of the most recent commit, and `HEAD` contains `ref: refs/heads/main`, creating the branch reference chain.
+
+![Screenshot 4B](screenshot_4B.jpg)
+
+---
+
+### Screenshot 4C — `cat .pes/refs/heads/main` and `cat .pes/HEAD`
+
+**Description:** This screenshot shows the reference files that tie the commit history to human-readable names. `.pes/HEAD` contains `ref: refs/heads/main` — an indirect reference pointing to the current branch. `.pes/refs/heads/main` contains the 64-character SHA-256 hash of the most recent commit. When a new commit is made, only `refs/heads/main` is updated atomically (using a temp file + rename) to point to the new commit hash. `HEAD` itself never changes during normal commits — it always points to the branch, and the branch pointer advances. This two-level indirection is what makes branch creation trivially cheap: creating a branch is just creating a new file under `refs/heads/`.
+
+![Screenshot 4C](screenshot_4C.jpg)
+
