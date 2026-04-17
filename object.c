@@ -218,7 +218,42 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     }
     fclose(f);
 
-    // TODO: Verify integrity, parse header, and extract data
+    // 3. Verify integrity
+    ObjectID computed_id;
+    compute_hash(file_data, size, &computed_id);
+    if (memcmp(id->hash, computed_id.hash, HASH_SIZE) != 0) {
+        free(file_data);
+        return -1;
+    }
 
+    // 4. Parse the header
+    uint8_t *null_byte = memchr(file_data, '\0', size);
+    if (!null_byte) {
+        free(file_data);
+        return -1; // Corrupted format
+    }
+
+    if (strncmp((char *)file_data, "blob", 4) == 0) {
+        *type_out = OBJ_BLOB;
+    } else if (strncmp((char *)file_data, "tree", 4) == 0) {
+        *type_out = OBJ_TREE;
+    } else if (strncmp((char *)file_data, "commit", 6) == 0) {
+        *type_out = OBJ_COMMIT;
+    } else {
+        free(file_data);
+        return -1;
+    }
+
+    // 5. Extract data portion
+    *len_out = size - (null_byte + 1 - file_data);
+    *data_out = malloc(*len_out);
+    if (!(*data_out)) {
+        free(file_data);
+        return -1;
+    }
+    
+    memcpy(*data_out, null_byte + 1, *len_out);
+
+    free(file_data);
     return 0;
 }
