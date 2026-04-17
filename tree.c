@@ -133,6 +133,7 @@ static int write_tree_level(IndexEntry *entries, int count,
 
     int i = 0;
     while (i < count) {
+        if (tree.count >= MAX_TREE_ENTRIES) return -1; // Safety guard
         // Strip the current prefix to work on the remainder of the path
         const char *rel = entries[i].path + strlen(prefix);
         const char *slash = strchr(rel, '/');
