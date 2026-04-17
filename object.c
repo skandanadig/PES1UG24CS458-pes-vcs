@@ -117,7 +117,38 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         return 0; // Success, already deduplicated
     }
 
-    // TODO: Write to disk atomically
+    // 4. Create shard directory
+    char hex[HASH_HEX_SIZE + 1];
+    hash_to_hex(id_out, hex);
+    
+    char shard_dir[256];
+    snprintf(shard_dir, sizeof(shard_dir), "%s/%.2s", OBJECTS_DIR, hex);
+    
+    // We can try to make OBJECTS_DIR and shard_dir
+    mkdir(OBJECTS_DIR, 0755);
+    mkdir(shard_dir, 0755);
+
+    // 5. Write to a temporary file
+    char final_path[512];
+    object_path(id_out, final_path, sizeof(final_path));
+    
+    char temp_path[512];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp.%d", final_path, getpid());
+
+    int fd = open(temp_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (fd < 0) {
+        free(full_data);
+        return -1;
+    }
+
+    if (write(fd, full_data, full_len) != (ssize_t)full_len) {
+        close(fd);
+        unlink(temp_path);
+        free(full_data);
+        return -1;
+    }
+    
+    // TODO: fsync and rename atomic step
 
     free(full_data);
     return 0;
