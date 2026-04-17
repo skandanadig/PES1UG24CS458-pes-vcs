@@ -607,4 +607,4 @@ The following questions cover filesystem concepts beyond the implementation scop
 
 ### Phase 1
 **Screenshot 1A: `./test_objects` output**
-![Screenshot 1A](1A.png)
+![Screenshot 1A](screenshot_1A.jpg)
