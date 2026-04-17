@@ -268,7 +268,10 @@ int index_add(Index *index, const char *path) {
     // 4. Update or insert index entry
     IndexEntry *existing = index_find(index, path);
     if (!existing) {
-        if (index->count >= MAX_INDEX_ENTRIES) return -1;
+        if (index->count >= MAX_INDEX_ENTRIES) {
+            fprintf(stderr, "error: index is full (max %d entries)\n", MAX_INDEX_ENTRIES);
+            return -1;
+        }
         existing = &index->entries[index->count++];
     }
 
