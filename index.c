@@ -188,9 +188,11 @@ static int compare_index_entries(const void *a, const void *b) {
 }
 
 int index_save(const Index *index) {
-    // Work on a sorted copy — don't mutate the caller's struct
-    Index sorted = *index;
-    qsort(sorted.entries, sorted.count, sizeof(IndexEntry), compare_index_entries);
+    // Use heap allocation — Index is ~5.6MB, too large for the stack
+    Index *sorted = malloc(sizeof(Index));
+    if (!sorted) return -1;
+    *sorted = *index;
+    qsort(sorted->entries, sorted->count, sizeof(IndexEntry), compare_index_entries);
 
     char tmp_path[128];
     snprintf(tmp_path, sizeof(tmp_path), "%s.tmp.%d", INDEX_FILE, getpid());
@@ -198,12 +200,13 @@ int index_save(const Index *index) {
     FILE *f = fopen(tmp_path, "w");
     if (!f) {
         perror("index_save: fopen");
+        free(sorted);
         return -1;
     }
 
     char hex[HASH_HEX_SIZE + 1];
-    for (int i = 0; i < sorted.count; i++) {
-        const IndexEntry *e = &sorted.entries[i];
+    for (int i = 0; i < sorted->count; i++) {
+        const IndexEntry *e = &sorted->entries[i];
         hash_to_hex(&e->hash, hex);
         fprintf(f, "%o %s %llu %u %s\n",
                 e->mode, hex,
@@ -214,6 +217,7 @@ int index_save(const Index *index) {
     fflush(f);
     fsync(fileno(f));
     fclose(f);
+    free(sorted);
 
     if (rename(tmp_path, INDEX_FILE) != 0) {
         perror("index_save: rename");
