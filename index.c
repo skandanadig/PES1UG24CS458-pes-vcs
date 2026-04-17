@@ -182,11 +182,41 @@ int index_load(Index *index) {
 //   - rename                           : atomically moving the temp file over the old index
 //
 // Returns 0 on success, -1 on error.
+static int compare_index_entries(const void *a, const void *b) {
+    return strcmp(((const IndexEntry *)a)->path,
+                  ((const IndexEntry *)b)->path);
+}
+
 int index_save(const Index *index) {
-    // TODO: Implement atomic index saving
-    // (See Lab Appendix for logical steps)
-    (void)index;
-    return -1;
+    // Work on a sorted copy — don't mutate the caller's struct
+    Index sorted = *index;
+    qsort(sorted.entries, sorted.count, sizeof(IndexEntry), compare_index_entries);
+
+    char tmp_path[128];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp.%d", INDEX_FILE, getpid());
+
+    FILE *f = fopen(tmp_path, "w");
+    if (!f) return -1;
+
+    char hex[HASH_HEX_SIZE + 1];
+    for (int i = 0; i < sorted.count; i++) {
+        const IndexEntry *e = &sorted.entries[i];
+        hash_to_hex(&e->hash, hex);
+        fprintf(f, "%o %s %llu %u %s\n",
+                e->mode, hex,
+                (unsigned long long)e->mtime_sec,
+                e->size, e->path);
+    }
+
+    fflush(f);
+    fsync(fileno(f));
+    fclose(f);
+
+    if (rename(tmp_path, INDEX_FILE) != 0) {
+        unlink(tmp_path);
+        return -1;
+    }
+    return 0;
 }
 
 // Stage a file for the next commit.
@@ -198,9 +228,52 @@ int index_save(const Index *index) {
 //   - index_find                       : checking if the file is already staged
 //
 // Returns 0 on success, -1 on error.
+// Forward declaration from object.c
+int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
+
 int index_add(Index *index, const char *path) {
-    // TODO: Implement file staging
-    // (See Lab Appendix for logical steps)
-    (void)index; (void)path;
-    return -1;
+    // 1. Read the file contents
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        fprintf(stderr, "error: cannot open '%s'\n", path);
+        return -1;
+    }
+
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    uint8_t *contents = malloc(file_size);
+    if (!contents) { fclose(f); return -1; }
+    if (fread(contents, 1, file_size, f) != (size_t)file_size) {
+        free(contents); fclose(f); return -1;
+    }
+    fclose(f);
+
+    // 2. Write blob to object store
+    ObjectID blob_id;
+    if (object_write(OBJ_BLOB, contents, file_size, &blob_id) != 0) {
+        free(contents); return -1;
+    }
+    free(contents);
+
+    // 3. Get file metadata
+    struct stat st;
+    if (stat(path, &st) != 0) return -1;
+
+    // 4. Update or insert index entry
+    IndexEntry *existing = index_find(index, path);
+    if (!existing) {
+        if (index->count >= MAX_INDEX_ENTRIES) return -1;
+        existing = &index->entries[index->count++];
+    }
+
+    existing->mode     = (st.st_mode & S_IXUSR) ? 0100755 : 0100644;
+    existing->hash     = blob_id;
+    existing->mtime_sec = (uint64_t)st.st_mtime;
+    existing->size     = (uint32_t)st.st_size;
+    strncpy(existing->path, path, sizeof(existing->path) - 1);
+    existing->path[sizeof(existing->path) - 1] = '\0';
+
+    return index_save(index);
 }
