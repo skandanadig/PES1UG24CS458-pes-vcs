@@ -201,8 +201,14 @@ static int write_tree_level(IndexEntry *entries, int count,
 // Returns 0 on success, -1 on error.
 int tree_from_index(ObjectID *id_out) {
     Index index;
-    if (index_load(&index) != 0) return -1;
-    if (index.count == 0) return -1; // Nothing staged
+    if (index_load(&index) != 0) {
+        fprintf(stderr, "error: could not load index\n");
+        return -1;
+    }
+    if (index.count == 0) {
+        fprintf(stderr, "error: nothing to commit (index is empty)\n");
+        return -1;
+    }
 
     return write_tree_level(index.entries, index.count, "", id_out);
 }
