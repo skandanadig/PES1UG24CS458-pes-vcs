@@ -225,12 +225,16 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
 
     if (object_write(OBJ_COMMIT, commit_data, commit_len, commit_id_out) != 0) {
         free(commit_data);
+        fprintf(stderr, "error: failed to write commit object\n");
         return -1;
     }
     free(commit_data);
 
     // 5. Update HEAD to point to the new commit
-    if (head_update(commit_id_out) != 0) return -1;
+    if (head_update(commit_id_out) != 0) {
+        fprintf(stderr, "error: failed to update HEAD\n");
+        return -1;
+    }
 
     char hex[HASH_HEX_SIZE + 1];
     hash_to_hex(commit_id_out, hex);
