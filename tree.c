@@ -194,6 +194,10 @@ static int write_tree_level(IndexEntry *entries, int count,
 // Build a tree hierarchy from the current index and write all tree
 // objects to the object store.
 //
+// NOTE: index_load returns entries in sorted order (index_save sorts them),
+// so write_tree_level can rely on all entries for a given subdirectory
+// being contiguous in the array.
+//
 // Returns 0 on success, -1 on error.
 int tree_from_index(ObjectID *id_out) {
     Index index;
