@@ -196,7 +196,10 @@ int index_save(const Index *index) {
     snprintf(tmp_path, sizeof(tmp_path), "%s.tmp.%d", INDEX_FILE, getpid());
 
     FILE *f = fopen(tmp_path, "w");
-    if (!f) return -1;
+    if (!f) {
+        perror("index_save: fopen");
+        return -1;
+    }
 
     char hex[HASH_HEX_SIZE + 1];
     for (int i = 0; i < sorted.count; i++) {
@@ -213,6 +216,7 @@ int index_save(const Index *index) {
     fclose(f);
 
     if (rename(tmp_path, INDEX_FILE) != 0) {
+        perror("index_save: rename");
         unlink(tmp_path);
         return -1;
     }
